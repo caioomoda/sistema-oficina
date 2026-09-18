@@ -414,6 +414,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
         </select>
       </div>
       <div class="card-hd-sub" style="padding:0;">Preencher a data de saída conclui o atendimento automaticamente; apagar a data de saída reabre o atendimento no status acima.</div>
+      <div class="fgroup"><label class="flbl">Responsável pelo atendimento</label><input id="edit-responsavel" list="dl-responsavel-e" placeholder="Nome de quem está executando"><datalist id="dl-responsavel-e"></datalist></div>
+      <div class="fgroup"><label class="flbl">Histórico de status deste atendimento</label><div id="edit-historico" style="padding:6px 0;"></div></div>
       <div class="frow2">
         <div class="fgroup"><label class="flbl">Data de entrada</label><input id="edit-entrada-data" type="date"></div>
         <div class="fgroup"><label class="flbl">Hora de entrada</label><input id="edit-entrada-hora" type="time"></div>
@@ -438,6 +440,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
     <div class="del-actions">
       <button class="del-cancel" onclick="fecharDel()">Cancelar</button>
       <button class="del-confirm" onclick="confirmarDel()">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESPONSÁVEL PELO ATENDIMENTO (ao entrar em andamento) -->
+<div class="del-overlay" id="resp-overlay">
+  <div class="del-box">
+    <div class="del-title">Quem vai atender esse serviço?</div>
+    <div class="del-sub">Informe o nome do responsável para registrar no histórico.</div>
+    <input id="resp-input" list="dl-responsavel" placeholder="Nome do responsável" style="margin-bottom:14px;" onkeydown="if(event.key==='Enter')confirmarResp()">
+    <datalist id="dl-responsavel"></datalist>
+    <div class="del-actions">
+      <button class="del-cancel" onclick="fecharResp()">Cancelar</button>
+      <button class="del-confirm" style="background:#1D6FA5;" onclick="confirmarResp()">Confirmar</button>
     </div>
   </div>
 </div>
@@ -500,12 +516,14 @@ async function verificarSessao(){
 function toRow(v){
   return {id:v.id,chassi:v.chassi,cliente:v.cliente,contato:v.contato||'',modelo:v.modelo,cor:v.cor,tipo:v.tipo,
     status_manual:v.statusManual||'fila',entrada_data:v.entradaData||null,entrada_hora:v.entradaHora||null,obs_entrada:v.obsEntrada||'',
-    saida_data:v.saidaData||null,saida_hora:v.saidaHora||null,obs_saida:v.obsSaida||''};
+    saida_data:v.saidaData||null,saida_hora:v.saidaHora||null,obs_saida:v.obsSaida||'',
+    historico_status:v.historicoStatus||[],responsavel_atual:v.responsavelAtual||null};
 }
 function fromRow(r){
   return {id:r.id,chassi:r.chassi,cliente:r.cliente,contato:r.contato,modelo:r.modelo,cor:r.cor,tipo:r.tipo,statusManual:r.status_manual,
     entradaData:r.entrada_data,entradaHora:r.entrada_hora,obsEntrada:r.obs_entrada,
-    saidaData:r.saida_data,saidaHora:r.saida_hora,obsSaida:r.obs_saida};
+    saidaData:r.saida_data,saidaHora:r.saida_hora,obsSaida:r.obs_saida,
+    historicoStatus:r.historico_status||[],responsavelAtual:r.responsavel_atual||null};
 }
 async function save(){
   if(!registros.length)return;
@@ -536,6 +554,23 @@ function computeStatus(v){return v.saidaData?'concluido':(v.statusManual||'fila'
 function statusLabel(s){return {fila:'Na fila',andamento:'Em andamento',pendencia:'Pendência',concluido:'Concluído'}[s]||s;}
 function statusBadgeClass(s){return {fila:'b-b',andamento:'b-a',pendencia:'b-c',concluido:'b-g'}[s]||'b-b';}
 function tiposSugeridos(){return [...new Set(registros.map(function(v){return v.tipo;}).filter(Boolean))].sort(function(a,b){return a.localeCompare(b);});}
+function responsaveisSugeridos(){
+  var set=new Set();
+  registros.forEach(function(v){
+    if(v.responsavelAtual)set.add(v.responsavelAtual);
+    (v.historicoStatus||[]).forEach(function(h){if(h.responsavel)set.add(h.responsavel);});
+  });
+  return [...set].sort(function(a,b){return a.localeCompare(b);});
+}
+/* registra uma transição no histórico de status do atendimento (nunca apaga, só acrescenta) */
+function registrarHistorico(v,status,data,hora,responsavel){
+  if(!v.historicoStatus)v.historicoStatus=[];
+  var entry={status:status,data:data||today(),hora:hora||nowHM()};
+  if(responsavel)entry.responsavel=responsavel;
+  v.historicoStatus.push(entry);
+}
+function passouPorPendencia(v){return (v.historicoStatus||[]).some(function(h){return h.status==='pendencia';});}
+function fmtHistItem(h){return statusLabel(h.status)+' · '+h.data+' '+h.hora+(h.responsavel?' · '+h.responsavel:'');}
 
 function renderMetrics(){
   var fila=registros.filter(function(v){return computeStatus(v)==='fila';});
@@ -570,7 +605,7 @@ function renderHierarquia(){
     html+='<div class="tipo-bloco"><div class="tipo-row" onclick="toggleTipo(\''+tipo.replace(/'/g,"\\'")+'\')"><span style="font-size:14px;color:#888780;">'+(isOpen?'&#9660;':'&#9654;')+'</span><span class="tipo-nome">'+tipo+'</span>'+(t.aberto>0?'<span class="chip chip-a" style="margin-right:4px;">'+t.aberto+' aberto'+(t.aberto>1?'s':'')+'</span>':'')+(t.concluido>0?'<span class="chip chip-g">'+t.concluido+' concl.</span>':'')+'</div><div class="tipo-body'+(isOpen?' open':'')+'">';
     t.items.slice().sort(function(a,b){return (computeStatus(a)==='concluido'?1:0)-(computeStatus(b)==='concluido'?1:0)||new Date(b.entradaData)-new Date(a.entradaData);}).forEach(function(v){
       var h=horasAtendimento(v),st=computeStatus(v);
-      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+'</div><div class="hist-datas">'+v.modelo+' '+v.cor+' · '+fmtHoras(h)+'</div></div><span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
+      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+'</div><div class="hist-datas">'+v.modelo+' '+v.cor+' · '+fmtHoras(h)+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:4px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
     });
     html+='</div></div>';
   });
@@ -579,9 +614,34 @@ function renderHierarquia(){
 function toggleTipo(t){if(openTipos.has(t))openTipos.delete(t);else openTipos.add(t);renderHierarquia();}
 
 /* ---------- Ações rápidas de status (usadas na lista de Veículos) ---------- */
-async function mudarStatus(id,novo){
+var respPendingId=null,respPendingNovo=null;
+function mudarStatus(id,novo){
+  if(novo==='andamento'){abrirRespModal(id,novo);return;}
+  aplicarMudancaStatus(id,novo,null);
+}
+async function aplicarMudancaStatus(id,novo,responsavel){
   var v=registros.find(function(x){return x.id===id;});if(!v)return;
-  v.statusManual=novo;await save();renderAll();showToast('Status atualizado: '+statusLabel(novo));
+  v.statusManual=novo;
+  if(novo==='andamento'&&responsavel)v.responsavelAtual=responsavel;
+  registrarHistorico(v,novo,today(),nowHM(),novo==='andamento'?responsavel:null);
+  await save();renderAll();showToast('Status atualizado: '+statusLabel(novo)+(responsavel?' · '+responsavel:''));
+}
+function abrirRespModal(id,novo){
+  respPendingId=id;respPendingNovo=novo;
+  var v=registros.find(function(x){return x.id===id;});
+  document.getElementById('resp-input').value=(v&&v.responsavelAtual)||'';
+  var dl=document.getElementById('dl-responsavel');
+  dl.innerHTML=responsaveisSugeridos().map(function(n){return '<option value="'+n+'">';}).join('');
+  document.getElementById('resp-overlay').classList.add('open');
+  setTimeout(function(){document.getElementById('resp-input').focus();},50);
+}
+function fecharResp(){document.getElementById('resp-overlay').classList.remove('open');respPendingId=null;respPendingNovo=null;}
+async function confirmarResp(){
+  var nome=document.getElementById('resp-input').value.trim();
+  if(!nome){showToast('Informe o nome do responsável',true);return;}
+  var id=respPendingId,novo=respPendingNovo;
+  fecharResp();
+  await aplicarMudancaStatus(id,novo,nome);
 }
 function irParaSaida(chassi){
   document.querySelectorAll('.nav-pill').forEach(function(p){if(p.textContent.trim()==='Registrar saída')goSection(p,'s-saida');});
@@ -616,7 +676,7 @@ function renderLista(){
       botoes+='<button class="qa-btn qa-saida" onclick="irParaSaida(\''+v.chassi+'\')">&#8593; Saída</button>';
       quick='<div class="veh-quick">'+botoes+'</div>';
     }
-    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+v.modelo+' '+v.cor+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+'</div></div><span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
+    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+v.modelo+' '+v.cor+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:2px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
   }).join('');
   var selAllEl=document.getElementById('chk-select-all');
   if(selAllEl)selAllEl.checked=lastListaIds.length>0&&lastListaIds.every(function(id){return selectedIds.has(id);});
@@ -644,6 +704,12 @@ function pedirDelBulk(){
 }
 
 /* ---------- Edição ---------- */
+function renderEditHistorico(v){
+  var el=document.getElementById('edit-historico');if(!el)return;
+  var itens=(v.historicoStatus||[]).slice();
+  if(!itens.length){el.innerHTML='<div style="font-size:11px;color:#888780;">Sem histórico registrado ainda.</div>';return;}
+  el.innerHTML=itens.map(function(h){return '<span class="badge '+statusBadgeClass(h.status)+'" style="margin:0 4px 4px 0;">'+fmtHistItem(h)+'</span>';}).join('');
+}
 function abrirEdicao(id){
   var v=registros.find(function(x){return x.id===id;});if(!v)return;
   document.getElementById('edit-id').value=v.id;
@@ -654,12 +720,14 @@ function abrirEdicao(id){
   document.getElementById('edit-cor').value=v.cor||'';
   document.getElementById('edit-tipo').value=v.tipo||'';
   document.getElementById('edit-status').value=v.statusManual||'fila';
+  document.getElementById('edit-responsavel').value=v.responsavelAtual||'';
   document.getElementById('edit-entrada-data').value=v.entradaData||'';
   document.getElementById('edit-entrada-hora').value=v.entradaHora||'';
   document.getElementById('edit-obs-entrada').value=v.obsEntrada||'';
   document.getElementById('edit-saida-data').value=v.saidaData||'';
   document.getElementById('edit-saida-hora').value=v.saidaHora||'';
   document.getElementById('edit-obs-saida').value=v.obsSaida||'';
+  renderEditHistorico(v);
   updateEditDatalist();
   document.getElementById('modal-editar').classList.add('open');
 }
@@ -672,15 +740,26 @@ async function salvarEdicao(){
   var cor=document.getElementById('edit-cor').value.trim();
   var tipo=document.getElementById('edit-tipo').value.trim();
   if(!cliente||!modelo||!cor||!tipo){showToast('Cliente, modelo, cor e tipo de serviço são obrigatórios',true);return;}
+  var statusAntes=v.statusManual,saidaAntes=v.saidaData;
+  var novoStatus=document.getElementById('edit-status').value;
+  var novoResponsavel=document.getElementById('edit-responsavel').value.trim();
+  var novaSaidaData=document.getElementById('edit-saida-data').value||null;
+  var novaSaidaHora=document.getElementById('edit-saida-hora').value||null;
   v.cliente=cliente;v.contato=document.getElementById('edit-contato').value.trim();
   v.modelo=modelo;v.cor=cor;v.tipo=tipo;
-  v.statusManual=document.getElementById('edit-status').value;
+  v.statusManual=novoStatus;
+  if(novoResponsavel)v.responsavelAtual=novoResponsavel;
   v.entradaData=document.getElementById('edit-entrada-data').value;
   v.entradaHora=document.getElementById('edit-entrada-hora').value;
   v.obsEntrada=document.getElementById('edit-obs-entrada').value;
-  v.saidaData=document.getElementById('edit-saida-data').value||null;
-  v.saidaHora=document.getElementById('edit-saida-hora').value||null;
+  v.saidaData=novaSaidaData;
+  v.saidaHora=novaSaidaHora;
   v.obsSaida=document.getElementById('edit-obs-saida').value;
+  if(novaSaidaData&&!saidaAntes){
+    registrarHistorico(v,'concluido',novaSaidaData,novaSaidaHora||nowHM());
+  }else if(!novaSaidaData&&novoStatus!==statusAntes){
+    registrarHistorico(v,novoStatus,today(),nowHM(),novoStatus==='andamento'?(novoResponsavel||v.responsavelAtual||null):null);
+  }
   fecharModal();await save();renderAll();showToast('Atendimento atualizado: '+v.chassi);
 }
 
@@ -715,13 +794,15 @@ async function addEntrada(){
   var cor=document.getElementById('e-cor').value.trim();
   var tipo=document.getElementById('e-tipo').value.trim();
   if(!chassi||!cliente||!modelo||!cor||!tipo){showToast('Preencha chassi, cliente, modelo, cor e tipo de serviço',true);return;}
+  var entradaData=document.getElementById('e-data').value||today();
+  var entradaHora=document.getElementById('e-hora').value||nowHM();
   registros.push({
     id:nid++,chassi:chassi,cliente:cliente,contato:document.getElementById('e-contato').value.trim(),
     modelo:modelo,cor:cor,tipo:tipo,statusManual:'fila',
-    entradaData:document.getElementById('e-data').value||today(),
-    entradaHora:document.getElementById('e-hora').value||nowHM(),
+    entradaData:entradaData,entradaHora:entradaHora,
     obsEntrada:document.getElementById('e-obs').value,
-    saidaData:null,saidaHora:null,obsSaida:''
+    saidaData:null,saidaHora:null,obsSaida:'',
+    historicoStatus:[{status:'fila',data:entradaData,hora:entradaHora}]
   });
   ['e-chassi','e-cliente','e-contato','e-modelo','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
   await save();renderAll();showToast('Entrada registrada: '+chassi);
@@ -759,6 +840,7 @@ async function registrarSaida(){
   v.saidaData=document.getElementById('s-data').value||today();
   v.saidaHora=document.getElementById('s-hora').value||nowHM();
   v.obsSaida=document.getElementById('s-obs').value;
+  registrarHistorico(v,'concluido',v.saidaData,v.saidaHora);
   selectedSaidaId=null;
   document.getElementById('s-chassi').value='';document.getElementById('s-obs').value='';
   document.getElementById('saida-preview').style.display='none';
@@ -782,13 +864,18 @@ function renderHistoricoBusca(){
 }
 function abrirHistTimeline(chassi){
   histChassiSelecionado=chassi;
-  var items=registros.filter(function(v){return v.chassi===chassi;}).sort(function(a,b){return new Date(b.entradaData+'T'+(b.entradaHora||'00:00'))-new Date(a.entradaData+'T'+(a.entradaHora||'00:00'));});
+  var itemsAsc=registros.filter(function(v){return v.chassi===chassi;}).sort(function(a,b){return new Date(a.entradaData+'T'+(a.entradaHora||'00:00'))-new Date(b.entradaData+'T'+(b.entradaHora||'00:00'));});
+  var numeroPorId={};itemsAsc.forEach(function(v,i){numeroPorId[v.id]=i+1;});
+  var items=itemsAsc.slice().reverse();
   document.getElementById('hist-timeline-title').textContent='Histórico — '+chassi;
   var cor={fila:'#185FA5',andamento:'#854F0B',pendencia:'#993C1D',concluido:'#0F6E56'};
   document.getElementById('hist-timeline').innerHTML=items.map(function(v){
-    var h=horasAtendimento(v),st=computeStatus(v);
+    var h=horasAtendimento(v),st=computeStatus(v),n=numeroPorId[v.id];
     var desc='<b>Entrada:</b> '+(v.obsEntrada||'—')+(v.obsSaida?'<br><b>Saída:</b> '+v.obsSaida:'');
-    return '<div class="hist-item"><div class="hist-dot" style="background:'+cor[st]+';"></div><div class="hist-body"><div class="hist-tipo">'+v.tipo+' <span class="badge '+statusBadgeClass(st)+'" style="margin-left:4px;">'+statusLabel(st)+'</span></div><div class="hist-datas">'+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.saidaData?' → '+v.saidaData+' '+v.saidaHora:'')+' · '+fmtHoras(h)+'</div><div class="hist-desc">'+desc+'</div></div></div>';
+    var subTimeline=(v.historicoStatus||[]).map(function(hh){
+      return '<span class="badge '+statusBadgeClass(hh.status)+'" style="margin:0 4px 4px 0;">'+fmtHistItem(hh)+'</span>';
+    }).join('')||'<span style="font-size:11px;color:#888780;">sem histórico de status</span>';
+    return '<div class="hist-item"><div class="hist-dot" style="background:'+cor[st]+';"></div><div class="hist-body"><div class="hist-tipo">Atendimento '+n+' — '+v.tipo+' <span class="badge '+statusBadgeClass(st)+'" style="margin-left:4px;">'+statusLabel(st)+'</span>'+(passouPorPendencia(v)&&st!=='pendencia'?' <span class="badge b-c">teve pendência</span>':'')+'</div><div class="hist-datas">'+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.saidaData?' → '+v.saidaData+' '+v.saidaHora:'')+' · '+fmtHoras(h)+'</div><div style="margin-top:6px;">'+subTimeline+'</div><div class="hist-desc">'+desc+'</div></div></div>';
   }).join('');
   document.getElementById('hist-timeline-card').style.display='block';
 }
@@ -802,6 +889,7 @@ function updateDatalist(){
   dl('dl-cliente',registros.map(function(v){return v.cliente;}));
   dl('dl-contato',registros.map(function(v){return v.contato;}));
   dl('dl-tipo',tiposSugeridos());
+  dl('dl-responsavel',responsaveisSugeridos());
 }
 function updateEditDatalist(){
   var dl=function(id,vals){var el=document.getElementById(id);if(el)el.innerHTML=[...new Set(vals.filter(Boolean))].map(function(v){return '<option value="'+v+'">';}).join('');};
@@ -810,6 +898,7 @@ function updateEditDatalist(){
   dl('dl-cliente-e',registros.map(function(v){return v.cliente;}));
   dl('dl-contato-e',registros.map(function(v){return v.contato;}));
   dl('dl-tipo-e',tiposSugeridos());
+  dl('dl-responsavel-e',responsaveisSugeridos());
 }
 
 /* ---------- Import / Export XLS ---------- */
@@ -847,6 +936,7 @@ function processImport(rows){
       chassi:chassi,cliente:findCol(row,['Cliente','cliente']),contato:findCol(row,['Contato','contato','Telefone']),
       modelo:findCol(row,['Modelo','modelo']),cor:findCol(row,['Cor','cor']),
       tipo:findCol(row,['Tipo de Serviço','TipodeServico','Tipo']),
+      responsavelAtual:findCol(row,['Responsável Atual','ResponsavelAtual','Responsável','Responsavel']),
       entradaData:normalizeDate(findCol(row,['Data Entrada','DataEntrada'])),
       entradaHora:normalizeTime(findCol(row,['Hora Entrada','HoraEntrada'])),
       saidaData:normalizeDate(findCol(row,['Data Saída','DataSaida','Data Saida'])),
@@ -861,7 +951,7 @@ function processImport(rows){
       result.push({tipo:'novo',chassi:chassi,data:rowData,desc:rowData.cliente+' — '+rowData.modelo+' '+rowData.cor});
     }else{
       var changes=[];
-      ['cliente','contato','modelo','cor','tipo','statusManual','entradaData','entradaHora','saidaData','saidaHora','obsEntrada','obsSaida'].forEach(function(campo){
+      ['cliente','contato','modelo','cor','tipo','statusManual','responsavelAtual','entradaData','entradaHora','saidaData','saidaHora','obsEntrada','obsSaida'].forEach(function(campo){
         if(rowData[campo]&&rowData[campo]!==existing[campo])changes.push({campo:campo,valor:rowData[campo]});
       });
       if(changes.length>0){result.push({tipo:'atualiza',chassi:chassi,existingId:existing.id,changes:changes,desc:existing.cliente+' — '+existing.modelo,changeDesc:changes.map(function(c){return c.campo+': '+c.valor;}).join(', ')});}
@@ -885,8 +975,27 @@ function showImportPreview(result){
 async function confirmarImport(){
   var novos=0,atualizados=0;
   pendingImport.forEach(function(r){
-    if(r.tipo==='novo'){registros.push(Object.assign({id:nid++,contato:'',obsEntrada:'',obsSaida:'',saidaData:null,saidaHora:null},r.data));novos++;}
-    else if(r.tipo==='atualiza'){var v=registros.find(function(x){return x.id===r.existingId;});if(v){r.changes.forEach(function(c){v[c.campo]=c.valor;});atualizados++;}}
+    if(r.tipo==='novo'){
+      var hist=[{status:'fila',data:r.data.entradaData||today(),hora:r.data.entradaHora||nowHM()}];
+      if(r.data.statusManual&&r.data.statusManual!=='fila'){
+        var entradaEvt={status:r.data.statusManual,data:r.data.entradaData||today(),hora:r.data.entradaHora||nowHM()};
+        if(r.data.statusManual==='andamento'&&r.data.responsavelAtual)entradaEvt.responsavel=r.data.responsavelAtual;
+        hist.push(entradaEvt);
+      }
+      if(r.data.saidaData)hist.push({status:'concluido',data:r.data.saidaData,hora:r.data.saidaHora||nowHM()});
+      registros.push(Object.assign({id:nid++,contato:'',obsEntrada:'',obsSaida:'',saidaData:null,saidaHora:null,responsavelAtual:null,historicoStatus:hist},r.data));
+      novos++;
+    }else if(r.tipo==='atualiza'){
+      var v=registros.find(function(x){return x.id===r.existingId;});
+      if(v){
+        var mudouStatus=r.changes.find(function(c){return c.campo==='statusManual';});
+        var mudouSaida=r.changes.find(function(c){return c.campo==='saidaData';});
+        r.changes.forEach(function(c){v[c.campo]=c.valor;});
+        if(mudouSaida)registrarHistorico(v,'concluido',v.saidaData,v.saidaHora||nowHM());
+        else if(mudouStatus)registrarHistorico(v,v.statusManual,today(),nowHM(),v.statusManual==='andamento'?v.responsavelAtual:null);
+        atualizados++;
+      }
+    }
   });
   pendingImport=[];cancelarImport();await save();renderAll();showToast('Importado: '+novos+' novo'+(novos!==1?'s':'')+', '+atualizados+' atualizado'+(atualizados!==1?'s':''));
 }
@@ -896,16 +1005,20 @@ function exportXLS(tipoExp){
   var wb=XLSX.utils.book_new();
   if(tipoExp==='resumo'){
     var tree={};
-    registros.forEach(function(v){if(!tree[v.tipo])tree[v.tipo]={total:0,concluidos:0,horas:[]};tree[v.tipo].total++;if(computeStatus(v)==='concluido'){tree[v.tipo].concluidos++;tree[v.tipo].horas.push(horasAtendimento(v));}});
-    var rows=[['Tipo de Serviço','Total','Concluídos','Tempo médio (horas)','Tempo médio (dias)']];
-    Object.keys(tree).sort().forEach(function(k){var t=tree[k];var media=t.horas.length?(t.horas.reduce(function(a,b){return a+b;},0)/t.horas.length):null;rows.push([k,t.total,t.concluidos,media!=null?Math.round(media*10)/10:'',media!=null?Math.round(media/24*10)/10:'']);});
-    var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:26},{wch:8},{wch:11},{wch:18},{wch:16}];
+    registros.forEach(function(v){if(!tree[v.tipo])tree[v.tipo]={total:0,concluidos:0,comPendencia:0,horas:[]};tree[v.tipo].total++;if(passouPorPendencia(v))tree[v.tipo].comPendencia++;if(computeStatus(v)==='concluido'){tree[v.tipo].concluidos++;tree[v.tipo].horas.push(horasAtendimento(v));}});
+    var rows=[['Tipo de Serviço','Total','Concluídos','Com Pendência','Tempo médio (horas)','Tempo médio (dias)']];
+    Object.keys(tree).sort().forEach(function(k){var t=tree[k];var media=t.horas.length?(t.horas.reduce(function(a,b){return a+b;},0)/t.horas.length):null;rows.push([k,t.total,t.concluidos,t.comPendencia,media!=null?Math.round(media*10)/10:'',media!=null?Math.round(media/24*10)/10:'']);});
+    var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:26},{wch:8},{wch:11},{wch:13},{wch:18},{wch:16}];
     XLSX.utils.book_append_sheet(wb,ws,'Resumo');XLSX.writeFile(wb,'resumo_servicos_'+today()+'.xlsx');showToast('Resumo exportado');return;
   }
   var data=tipoExp==='aberto'?registros.filter(function(v){return computeStatus(v)!=='concluido';}):tipoExp==='concluido'?registros.filter(function(v){return computeStatus(v)==='concluido';}):registros;
-  var rows=[['ID_OS','Chassi','Cliente','Contato','Modelo','Cor','Tipo de Serviço','Status','Data Entrada','Hora Entrada','Data Saída','Hora Saída','Obs Entrada','Obs Saída','Horas Atendimento','Dias Atendimento']];
-  data.forEach(function(v){var h=horasAtendimento(v);rows.push([v.id,v.chassi,v.cliente,v.contato||'',v.modelo,v.cor,v.tipo,statusLabel(computeStatus(v)),v.entradaData||'',v.entradaHora||'',v.saidaData||'',v.saidaHora||'',v.obsEntrada||'',v.obsSaida||'',h!=null?Math.round(h*10)/10:'',h!=null?Math.round(h/24*10)/10:'']);});
-  var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:6},{wch:18},{wch:18},{wch:14},{wch:12},{wch:12},{wch:20},{wch:13},{wch:13},{wch:11},{wch:13},{wch:11},{wch:26},{wch:26},{wch:15},{wch:13}];
+  var rows=[['ID_OS','Chassi','Cliente','Contato','Modelo','Cor','Tipo de Serviço','Status','Responsável Atual','Data Entrada','Hora Entrada','Data Saída','Hora Saída','Obs Entrada','Obs Saída','Horas Atendimento','Dias Atendimento','Teve Pendência','Linha do Tempo de Status']];
+  data.forEach(function(v){
+    var h=horasAtendimento(v);
+    var linhaTempo=(v.historicoStatus||[]).map(fmtHistItem).join(' → ');
+    rows.push([v.id,v.chassi,v.cliente,v.contato||'',v.modelo,v.cor,v.tipo,statusLabel(computeStatus(v)),v.responsavelAtual||'',v.entradaData||'',v.entradaHora||'',v.saidaData||'',v.saidaHora||'',v.obsEntrada||'',v.obsSaida||'',h!=null?Math.round(h*10)/10:'',h!=null?Math.round(h/24*10)/10:'',passouPorPendencia(v)?'Sim':'Não',linhaTempo]);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:6},{wch:18},{wch:18},{wch:14},{wch:12},{wch:12},{wch:20},{wch:13},{wch:16},{wch:13},{wch:11},{wch:13},{wch:11},{wch:26},{wch:26},{wch:15},{wch:13},{wch:13},{wch:60}];
   XLSX.utils.book_append_sheet(wb,ws,tipoExp==='todos'?'Base Completa':tipoExp==='aberto'?'Em Aberto':'Concluídos');
   XLSX.writeFile(wb,'atendimentos_'+tipoExp+'_'+today()+'.xlsx');showToast('Exportado: '+data.length+' registros');
 }
