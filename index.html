@@ -336,7 +336,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
           <div class="fgroup"><label class="flbl">Hora de entrada</label><input id="e-hora" type="time"></div>
         </div>
         <div class="fgroup"><label class="flbl">Observação de entrada</label><textarea id="e-obs" placeholder="O que o cliente relatou / pediu para verificar..."></textarea></div>
-        <button class="btn-p" onclick="addEntrada()">&#10003; Confirmar entrada</button>
+        <button class="btn-p" id="btn-add-entrada" onclick="addEntrada()">&#10003; Confirmar entrada</button>
       </div>
     </div>
   </div>
@@ -828,27 +828,34 @@ async function confirmarDel(){
 
 /* ---------- Entrada ---------- */
 async function addEntrada(){
+  var btn=document.getElementById('btn-add-entrada');
+  if(btn&&btn.disabled)return;
   var chassi=document.getElementById('e-chassi').value.trim().toUpperCase();
   var cliente=document.getElementById('e-cliente').value.trim();
   var modelo=document.getElementById('e-modelo').value.trim();
   var cor=document.getElementById('e-cor').value.trim();
   var tipo=document.getElementById('e-tipo').value.trim();
   if(!chassi||!cliente||!modelo||!cor||!tipo){showToast('Preencha chassi, cliente, modelo, cor e tipo de serviço',true);return;}
-  var entradaData=document.getElementById('e-data').value||today();
-  var entradaHora=document.getElementById('e-hora').value||nowHM();
-  registros.push({
-    id:nid++,chassi:chassi,cliente:cliente,contato:document.getElementById('e-contato').value.trim(),
-    modelo:modelo,cor:cor,tipo:tipo,statusManual:'fila',
-    entradaData:entradaData,entradaHora:entradaHora,
-    obsEntrada:document.getElementById('e-obs').value,
-    saidaData:null,saidaHora:null,obsSaida:'',
-    historicoStatus:[{status:'fila',data:entradaData,hora:entradaHora}]
-  });
-  ['e-chassi','e-cliente','e-contato','e-modelo','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
-  await save();renderAll();
-  var totalChassi=registros.filter(function(r){return r.chassi===chassi;}).length;
-  showToast(totalChassi>1?('Entrada registrada: '+chassi+' — '+totalChassi+'ª visita deste chassi'):('Entrada registrada: '+chassi));
-  document.querySelectorAll('.nav-pill').forEach(function(p){if(p.textContent.trim()==='Veículos')goSection(p,'s-lista');});
+  if(btn)btn.disabled=true;
+  try{
+    var entradaData=document.getElementById('e-data').value||today();
+    var entradaHora=document.getElementById('e-hora').value||nowHM();
+    registros.push({
+      id:nid++,chassi:chassi,cliente:cliente,contato:document.getElementById('e-contato').value.trim(),
+      modelo:modelo,cor:cor,tipo:tipo,statusManual:'fila',
+      entradaData:entradaData,entradaHora:entradaHora,
+      obsEntrada:document.getElementById('e-obs').value,
+      saidaData:null,saidaHora:null,obsSaida:'',
+      historicoStatus:[{status:'fila',data:entradaData,hora:entradaHora}]
+    });
+    ['e-chassi','e-cliente','e-contato','e-modelo','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
+    await save();renderAll();
+    var totalChassi=registros.filter(function(r){return r.chassi===chassi;}).length;
+    showToast(totalChassi>1?('Entrada registrada: '+chassi+' — '+totalChassi+'ª visita deste chassi'):('Entrada registrada: '+chassi));
+    document.querySelectorAll('.nav-pill').forEach(function(p){if(p.textContent.trim()==='Veículos')goSection(p,'s-lista');});
+  }finally{
+    if(btn)btn.disabled=false;
+  }
 }
 
 /* ---------- Saída ---------- */
