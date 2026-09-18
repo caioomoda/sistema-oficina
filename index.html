@@ -290,9 +290,24 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
       <div class="chart-pad"><div style="position:relative;height:220px;"><canvas id="ch-tempo-tipo"></canvas></div></div>
     </div>
     <div class="card">
+      <div class="card-hd"><span class="card-hd-title">Pendência por tipo de serviço</span></div>
+      <div class="card-hd-sub">% dos atendimentos de cada tipo que passaram por pendência</div>
+      <div class="chart-pad"><div style="position:relative;height:220px;"><canvas id="ch-pendencia-tipo"></canvas></div></div>
+    </div>
+    <div class="card">
       <div class="card-hd"><span class="card-hd-title">Volume por tipo de serviço</span></div>
       <div class="card-hd-sub">Quantos atendimentos de cada tipo, no total</div>
       <div class="chart-pad"><div style="position:relative;height:220px;"><canvas id="ch-volume-tipo"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-title">Tempo médio por responsável</span></div>
+      <div class="card-hd-sub">Em horas, do início à saída — só atendimentos já concluídos</div>
+      <div class="chart-pad"><div style="position:relative;height:220px;"><canvas id="ch-tempo-responsavel"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-hd-title">Atendimentos por responsável</span></div>
+      <div class="card-hd-sub">Quantos atendimentos cada responsável já assumiu</div>
+      <div class="chart-pad"><div style="position:relative;height:220px;"><canvas id="ch-volume-responsavel"></canvas></div></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-hd-title">Entradas vs saídas por mês</span></div>
@@ -571,6 +586,30 @@ function registrarHistorico(v,status,data,hora,responsavel){
 }
 function passouPorPendencia(v){return (v.historicoStatus||[]).some(function(h){return h.status==='pendencia';});}
 function fmtHistItem(h){return statusLabel(h.status)+' · '+h.data+' '+h.hora+(h.responsavel?' · '+h.responsavel:'');}
+/* numera as visitas de cada chassi (1ª, 2ª...) em ordem cronológica de entrada */
+function numerosVisitaPorChassi(){
+  var porChassi={};
+  registros.forEach(function(v){(porChassi[v.chassi]=porChassi[v.chassi]||[]).push(v);});
+  var numeroPorId={},totalPorChassi={};
+  Object.keys(porChassi).forEach(function(ch){
+    var lista=porChassi[ch].slice().sort(function(a,b){return new Date(a.entradaData+'T'+(a.entradaHora||'00:00'))-new Date(b.entradaData+'T'+(b.entradaHora||'00:00'));});
+    lista.forEach(function(v,i){numeroPorId[v.id]=i+1;});
+    totalPorChassi[ch]=lista.length;
+  });
+  return {numeroPorId:numeroPorId,totalPorChassi:totalPorChassi};
+}
+/* renderiza o histórico de status de um atendimento, um status por linha, com início e fim de cada etapa */
+function renderHistoricoVertical(hist){
+  if(!hist||!hist.length)return '<div style="font-size:11px;color:#888780;">Sem histórico registrado ainda.</div>';
+  return hist.map(function(h,i){
+    var proximo=hist[i+1];
+    var fimTxt=proximo?('até '+proximo.data+' '+proximo.hora):(h.status==='concluido'?'':'em andamento até agora');
+    return '<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;flex-wrap:wrap;">'+
+      '<span class="badge '+statusBadgeClass(h.status)+'">'+statusLabel(h.status)+'</span>'+
+      '<span style="font-size:11px;color:#444;">desde '+h.data+' '+h.hora+(fimTxt?(' · '+fimTxt):'')+(h.responsavel?(' · '+h.responsavel):'')+'</span>'+
+    '</div>';
+  }).join('');
+}
 
 function renderMetrics(){
   var fila=registros.filter(function(v){return computeStatus(v)==='fila';});
@@ -589,6 +628,7 @@ function setFtab(btn,tab){document.querySelectorAll('.ftab').forEach(function(t)
 
 function renderHierarquia(){
   var tree={};
+  var vinfo=numerosVisitaPorChassi();
   registros.forEach(function(v){
     var st=computeStatus(v);
     if(ftab==='aberto'&&st==='concluido')return;
@@ -604,8 +644,8 @@ function renderHierarquia(){
     var t=tree[tipo],isOpen=openTipos.has(tipo);
     html+='<div class="tipo-bloco"><div class="tipo-row" onclick="toggleTipo(\''+tipo.replace(/'/g,"\\'")+'\')"><span style="font-size:14px;color:#888780;">'+(isOpen?'&#9660;':'&#9654;')+'</span><span class="tipo-nome">'+tipo+'</span>'+(t.aberto>0?'<span class="chip chip-a" style="margin-right:4px;">'+t.aberto+' aberto'+(t.aberto>1?'s':'')+'</span>':'')+(t.concluido>0?'<span class="chip chip-g">'+t.concluido+' concl.</span>':'')+'</div><div class="tipo-body'+(isOpen?' open':'')+'">';
     t.items.slice().sort(function(a,b){return (computeStatus(a)==='concluido'?1:0)-(computeStatus(b)==='concluido'?1:0)||new Date(b.entradaData)-new Date(a.entradaData);}).forEach(function(v){
-      var h=horasAtendimento(v),st=computeStatus(v);
-      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+'</div><div class="hist-datas">'+v.modelo+' '+v.cor+' · '+fmtHoras(h)+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:4px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
+      var h=horasAtendimento(v),st=computeStatus(v),totalVisitas=vinfo.totalPorChassi[v.chassi]||1;
+      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+(totalVisitas>1?' <span class="badge b-b">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="hist-datas">'+v.modelo+' '+v.cor+' · '+fmtHoras(h)+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:4px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
     });
     html+='</div></div>';
   });
@@ -643,9 +683,9 @@ async function confirmarResp(){
   fecharResp();
   await aplicarMudancaStatus(id,novo,nome);
 }
-function irParaSaida(chassi){
+function irParaSaida(id){
   document.querySelectorAll('.nav-pill').forEach(function(p){if(p.textContent.trim()==='Registrar saída')goSection(p,'s-saida');});
-  document.getElementById('s-chassi').value=chassi;buscaChassiSaida();
+  selecionarVeiculoSaida(id);
 }
 
 /* ---------- Lista de veículos/atendimentos ---------- */
@@ -653,6 +693,7 @@ function setListaFiltro(btn,f){document.querySelectorAll('.lf-btn').forEach(func
 
 function renderLista(){
   var q=(document.getElementById('lista-search').value||'').toLowerCase();
+  var vinfo=numerosVisitaPorChassi();
   var list=registros.filter(function(v){
     var st=computeStatus(v);
     if(listaFiltro!=='todos'&&st!==listaFiltro)return false;
@@ -667,16 +708,17 @@ function renderLista(){
   if(!list.length){document.getElementById('lista-veiculos').innerHTML='<div class="empty-state"><span class="empty-icon">&#128269;</span><div class="empty-title">Nenhum resultado</div></div>';updateBulkBar();return;}
   document.getElementById('lista-veiculos').innerHTML=list.map(function(v){
     var st=computeStatus(v);
+    var totalVisitas=vinfo.totalPorChassi[v.chassi]||1;
     var quick='';
     if(st!=='concluido'){
       var botoes='';
       if(st==='fila')botoes+='<button class="qa-btn qa-iniciar" onclick="mudarStatus('+v.id+',\'andamento\')">&#9654; Iniciar</button>';
       if(st==='andamento')botoes+='<button class="qa-btn qa-pendencia" onclick="mudarStatus('+v.id+',\'pendencia\')">&#9888; Pendência</button>';
       if(st==='pendencia')botoes+='<button class="qa-btn qa-retomar" onclick="mudarStatus('+v.id+',\'andamento\')">&#9654; Retomar</button>';
-      botoes+='<button class="qa-btn qa-saida" onclick="irParaSaida(\''+v.chassi+'\')">&#8593; Saída</button>';
+      botoes+='<button class="qa-btn qa-saida" onclick="irParaSaida('+v.id+')">&#8593; Saída</button>';
       quick='<div class="veh-quick">'+botoes+'</div>';
     }
-    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+v.modelo+' '+v.cor+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:2px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
+    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+v.modelo+' '+v.cor+(totalVisitas>1?' <span class="badge b-b" style="margin-left:4px;">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:2px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
   }).join('');
   var selAllEl=document.getElementById('chk-select-all');
   if(selAllEl)selAllEl.checked=lastListaIds.length>0&&lastListaIds.every(function(id){return selectedIds.has(id);});
@@ -706,9 +748,7 @@ function pedirDelBulk(){
 /* ---------- Edição ---------- */
 function renderEditHistorico(v){
   var el=document.getElementById('edit-historico');if(!el)return;
-  var itens=(v.historicoStatus||[]).slice();
-  if(!itens.length){el.innerHTML='<div style="font-size:11px;color:#888780;">Sem histórico registrado ainda.</div>';return;}
-  el.innerHTML=itens.map(function(h){return '<span class="badge '+statusBadgeClass(h.status)+'" style="margin:0 4px 4px 0;">'+fmtHistItem(h)+'</span>';}).join('');
+  el.innerHTML=renderHistoricoVertical(v.historicoStatus);
 }
 function abrirEdicao(id){
   var v=registros.find(function(x){return x.id===id;});if(!v)return;
@@ -805,7 +845,9 @@ async function addEntrada(){
     historicoStatus:[{status:'fila',data:entradaData,hora:entradaHora}]
   });
   ['e-chassi','e-cliente','e-contato','e-modelo','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
-  await save();renderAll();showToast('Entrada registrada: '+chassi);
+  await save();renderAll();
+  var totalChassi=registros.filter(function(r){return r.chassi===chassi;}).length;
+  showToast(totalChassi>1?('Entrada registrada: '+chassi+' — '+totalChassi+'ª visita deste chassi'):('Entrada registrada: '+chassi));
   document.querySelectorAll('.nav-pill').forEach(function(p){if(p.textContent.trim()==='Veículos')goSection(p,'s-lista');});
 }
 
@@ -864,18 +906,14 @@ function renderHistoricoBusca(){
 }
 function abrirHistTimeline(chassi){
   histChassiSelecionado=chassi;
-  var itemsAsc=registros.filter(function(v){return v.chassi===chassi;}).sort(function(a,b){return new Date(a.entradaData+'T'+(a.entradaHora||'00:00'))-new Date(b.entradaData+'T'+(b.entradaHora||'00:00'));});
-  var numeroPorId={};itemsAsc.forEach(function(v,i){numeroPorId[v.id]=i+1;});
-  var items=itemsAsc.slice().reverse();
+  var vinfo=numerosVisitaPorChassi();
+  var items=registros.filter(function(v){return v.chassi===chassi;}).sort(function(a,b){return new Date(b.entradaData+'T'+(b.entradaHora||'00:00'))-new Date(a.entradaData+'T'+(a.entradaHora||'00:00'));});
   document.getElementById('hist-timeline-title').textContent='Histórico — '+chassi;
   var cor={fila:'#185FA5',andamento:'#854F0B',pendencia:'#993C1D',concluido:'#0F6E56'};
   document.getElementById('hist-timeline').innerHTML=items.map(function(v){
-    var h=horasAtendimento(v),st=computeStatus(v),n=numeroPorId[v.id];
+    var h=horasAtendimento(v),st=computeStatus(v),n=vinfo.numeroPorId[v.id];
     var desc='<b>Entrada:</b> '+(v.obsEntrada||'—')+(v.obsSaida?'<br><b>Saída:</b> '+v.obsSaida:'');
-    var subTimeline=(v.historicoStatus||[]).map(function(hh){
-      return '<span class="badge '+statusBadgeClass(hh.status)+'" style="margin:0 4px 4px 0;">'+fmtHistItem(hh)+'</span>';
-    }).join('')||'<span style="font-size:11px;color:#888780;">sem histórico de status</span>';
-    return '<div class="hist-item"><div class="hist-dot" style="background:'+cor[st]+';"></div><div class="hist-body"><div class="hist-tipo">Atendimento '+n+' — '+v.tipo+' <span class="badge '+statusBadgeClass(st)+'" style="margin-left:4px;">'+statusLabel(st)+'</span>'+(passouPorPendencia(v)&&st!=='pendencia'?' <span class="badge b-c">teve pendência</span>':'')+'</div><div class="hist-datas">'+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.saidaData?' → '+v.saidaData+' '+v.saidaHora:'')+' · '+fmtHoras(h)+'</div><div style="margin-top:6px;">'+subTimeline+'</div><div class="hist-desc">'+desc+'</div></div></div>';
+    return '<div class="hist-item"><div class="hist-dot" style="background:'+cor[st]+';"></div><div class="hist-body"><div class="hist-tipo">Atendimento '+n+' — '+v.tipo+' <span class="badge '+statusBadgeClass(st)+'" style="margin-left:4px;">'+statusLabel(st)+'</span>'+(passouPorPendencia(v)&&st!=='pendencia'?' <span class="badge b-c">teve pendência</span>':'')+'</div><div class="hist-datas">'+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.saidaData?' → '+v.saidaData+' '+v.saidaHora:'')+' · '+fmtHoras(h)+'</div><div style="margin-top:6px;">'+renderHistoricoVertical(v.historicoStatus)+'</div><div class="hist-desc">'+desc+'</div></div></div>';
   }).join('');
   document.getElementById('hist-timeline-card').style.display='block';
 }
@@ -1049,6 +1087,33 @@ function renderCharts(){
   var volumeData=tipoNomes.map(function(nome){return {nome:nome,total:registros.filter(function(v){return v.tipo===nome;}).length};}).sort(function(a,b){return b.total-a.total;});
   if(charts.volumeTipo)charts.volumeTipo.destroy();
   if(volumeData.length)charts.volumeTipo=new Chart(document.getElementById('ch-volume-tipo'),{type:'bar',data:{labels:volumeData.map(function(t){return t.nome;}),datasets:[{data:volumeData.map(function(t){return t.total;}),backgroundColor:['#5DCAA5','#378ADD','#EF9F27','#D85A30','#7F77DD','#97C459'],borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10},precision:0}},y:{ticks:{font:{size:11}}}}}});
+
+  var pendenciaData=tipoNomes.map(function(nome){
+    var doTipo=registros.filter(function(v){return v.tipo===nome;});
+    var comPendencia=doTipo.filter(passouPorPendencia).length;
+    return {nome:nome,pct:doTipo.length?Math.round(comPendencia/doTipo.length*100):0};
+  }).sort(function(a,b){return b.pct-a.pct;});
+  if(charts.pendenciaTipo)charts.pendenciaTipo.destroy();
+  if(pendenciaData.length)charts.pendenciaTipo=new Chart(document.getElementById('ch-pendencia-tipo'),{type:'bar',data:{labels:pendenciaData.map(function(t){return t.nome;}),datasets:[{data:pendenciaData.map(function(t){return t.pct;}),backgroundColor:pendenciaData.map(function(t){return t.pct>=50?'#D85A30':t.pct>=20?'#EF9F27':'#5DCAA5';}),borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.parsed.x+'% dos atendimentos tiveram pendência';}}}},scales:{x:{beginAtZero:true,max:100,ticks:{font:{size:10},callback:function(v){return v+'%';}}},y:{ticks:{font:{size:11}}}}}});
+
+  function atendimentosDoResponsavel(nome){
+    return registros.filter(function(v){return v.responsavelAtual===nome||(v.historicoStatus||[]).some(function(h){return h.responsavel===nome;});});
+  }
+  var respNomes=responsaveisSugeridos();
+  var tempoRespData=[];
+  respNomes.forEach(function(nome){
+    var horas=atendimentosDoResponsavel(nome).filter(function(v){return computeStatus(v)==='concluido';}).map(horasAtendimento);
+    if(horas.length)tempoRespData.push({nome:nome,media:horas.reduce(function(a,b){return a+b;},0)/horas.length});
+  });
+  tempoRespData.sort(function(a,b){return b.media-a.media;});
+  if(charts.tempoResp)charts.tempoResp.destroy();
+  if(tempoRespData.length)charts.tempoResp=new Chart(document.getElementById('ch-tempo-responsavel'),{type:'bar',data:{labels:tempoRespData.map(function(t){return t.nome;}),datasets:[{data:tempoRespData.map(function(t){return Math.round(t.media*10)/10;}),backgroundColor:'#7F77DD',borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtHoras(ctx.parsed.x);}}}},scales:{x:{beginAtZero:true,ticks:{font:{size:10}},title:{display:true,text:'horas',font:{size:10}}},y:{ticks:{font:{size:11}}}}}});
+  else document.getElementById('ch-tempo-responsavel').parentElement.innerHTML='<div class="empty-state" style="padding:20px;"><div class="empty-sub">Ainda não há atendimentos concluídos com responsável definido</div></div>';
+
+  var volumeRespData=respNomes.map(function(nome){return {nome:nome,total:atendimentosDoResponsavel(nome).length};}).sort(function(a,b){return b.total-a.total;});
+  if(charts.volumeResp)charts.volumeResp.destroy();
+  if(volumeRespData.length)charts.volumeResp=new Chart(document.getElementById('ch-volume-responsavel'),{type:'bar',data:{labels:volumeRespData.map(function(t){return t.nome;}),datasets:[{data:volumeRespData.map(function(t){return t.total;}),backgroundColor:['#378ADD','#5DCAA5','#EF9F27','#D85A30','#7F77DD','#97C459'],borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:{size:10},precision:0}},y:{ticks:{font:{size:11}}}}}});
+  else document.getElementById('ch-volume-responsavel').parentElement.innerHTML='<div class="empty-state" style="padding:20px;"><div class="empty-sub">Nenhum responsável registrado ainda</div></div>';
 
   var months={};
   registros.forEach(function(v){var m=v.entradaData&&v.entradaData.slice(0,7);if(m){if(!months[m])months[m]={e:0,s:0};months[m].e++;}});
