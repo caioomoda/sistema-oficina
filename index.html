@@ -328,8 +328,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
         <div class="fgroup"><label class="flbl">Contato</label><input id="e-contato" placeholder="Telefone / WhatsApp" list="dl-contato" autocomplete="off"><datalist id="dl-contato"></datalist></div>
         <div class="frow2">
           <div class="fgroup"><label class="flbl">Modelo *</label><input id="e-modelo" placeholder="Ex: HB20" list="dl-mod" autocomplete="off"><datalist id="dl-mod"></datalist></div>
-          <div class="fgroup"><label class="flbl">Cor *</label><input id="e-cor" placeholder="Ex: Branco" list="dl-cor" autocomplete="off"><datalist id="dl-cor"></datalist></div>
+          <div class="fgroup"><label class="flbl">Versão</label><input id="e-versao" placeholder="Ex: Vision 1.0" list="dl-versao" autocomplete="off"><datalist id="dl-versao"></datalist></div>
         </div>
+        <div class="fgroup"><label class="flbl">Cor *</label><input id="e-cor" placeholder="Ex: Branco" list="dl-cor" autocomplete="off"><datalist id="dl-cor"></datalist></div>
         <div class="fgroup"><label class="flbl">Tipo de serviço *</label><input id="e-tipo" placeholder="Ex: Troca de óleo" list="dl-tipo" autocomplete="off"><datalist id="dl-tipo"></datalist></div>
         <div class="frow2">
           <div class="fgroup"><label class="flbl">Data de entrada</label><input id="e-data" type="date"></div>
@@ -418,8 +419,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1D6FA5;box-sh
       <div class="fgroup"><label class="flbl">Contato</label><input id="edit-contato" list="dl-contato-e"><datalist id="dl-contato-e"></datalist></div>
       <div class="frow2">
         <div class="fgroup"><label class="flbl">Modelo *</label><input id="edit-modelo" list="dl-mod-e" autocomplete="off"><datalist id="dl-mod-e"></datalist></div>
-        <div class="fgroup"><label class="flbl">Cor *</label><input id="edit-cor" list="dl-cor-e" autocomplete="off"><datalist id="dl-cor-e"></datalist></div>
+        <div class="fgroup"><label class="flbl">Versão</label><input id="edit-versao" list="dl-versao-e" autocomplete="off"><datalist id="dl-versao-e"></datalist></div>
       </div>
+      <div class="fgroup"><label class="flbl">Cor *</label><input id="edit-cor" list="dl-cor-e" autocomplete="off"><datalist id="dl-cor-e"></datalist></div>
       <div class="fgroup"><label class="flbl">Tipo de serviço *</label><input id="edit-tipo" list="dl-tipo-e"><datalist id="dl-tipo-e"></datalist></div>
       <div class="fgroup"><label class="flbl">Status</label>
         <select id="edit-status">
@@ -529,13 +531,13 @@ async function verificarSessao(){
 
 /* ---------- PERSISTÊNCIA (Supabase) ---------- */
 function toRow(v){
-  return {id:v.id,chassi:v.chassi,cliente:v.cliente,contato:v.contato||'',modelo:v.modelo,cor:v.cor,tipo:v.tipo,
+  return {id:v.id,chassi:v.chassi,cliente:v.cliente,contato:v.contato||'',modelo:v.modelo,versao:v.versao||'',cor:v.cor,tipo:v.tipo,
     status_manual:v.statusManual||'fila',entrada_data:v.entradaData||null,entrada_hora:v.entradaHora||null,obs_entrada:v.obsEntrada||'',
     saida_data:v.saidaData||null,saida_hora:v.saidaHora||null,obs_saida:v.obsSaida||'',
     historico_status:v.historicoStatus||[],responsavel_atual:v.responsavelAtual||null};
 }
 function fromRow(r){
-  return {id:r.id,chassi:r.chassi,cliente:r.cliente,contato:r.contato,modelo:r.modelo,cor:r.cor,tipo:r.tipo,statusManual:r.status_manual,
+  return {id:r.id,chassi:r.chassi,cliente:r.cliente,contato:r.contato,modelo:r.modelo,versao:r.versao,cor:r.cor,tipo:r.tipo,statusManual:r.status_manual,
     entradaData:r.entrada_data,entradaHora:r.entrada_hora,obsEntrada:r.obs_entrada,
     saidaData:r.saida_data,saidaHora:r.saida_hora,obsSaida:r.obs_saida,
     historicoStatus:r.historico_status||[],responsavelAtual:r.responsavel_atual||null};
@@ -586,6 +588,7 @@ function registrarHistorico(v,status,data,hora,responsavel){
 }
 function passouPorPendencia(v){return (v.historicoStatus||[]).some(function(h){return h.status==='pendencia';});}
 function fmtHistItem(h){return statusLabel(h.status)+' · '+h.data+' '+h.hora+(h.responsavel?' · '+h.responsavel:'');}
+function fmtVeiculo(v){return v.modelo+(v.versao?' '+v.versao:'')+' — '+v.cor;}
 /* numera as visitas de cada chassi (1ª, 2ª...) em ordem cronológica de entrada */
 function numerosVisitaPorChassi(){
   var porChassi={};
@@ -645,7 +648,7 @@ function renderHierarquia(){
     html+='<div class="tipo-bloco"><div class="tipo-row" onclick="toggleTipo(\''+tipo.replace(/'/g,"\\'")+'\')"><span style="font-size:14px;color:#888780;">'+(isOpen?'&#9660;':'&#9654;')+'</span><span class="tipo-nome">'+tipo+'</span>'+(t.aberto>0?'<span class="chip chip-a" style="margin-right:4px;">'+t.aberto+' aberto'+(t.aberto>1?'s':'')+'</span>':'')+(t.concluido>0?'<span class="chip chip-g">'+t.concluido+' concl.</span>':'')+'</div><div class="tipo-body'+(isOpen?' open':'')+'">';
     t.items.slice().sort(function(a,b){return (computeStatus(a)==='concluido'?1:0)-(computeStatus(b)==='concluido'?1:0)||new Date(b.entradaData)-new Date(a.entradaData);}).forEach(function(v){
       var h=horasAtendimento(v),st=computeStatus(v),totalVisitas=vinfo.totalPorChassi[v.chassi]||1;
-      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+(totalVisitas>1?' <span class="badge b-b">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="hist-datas">'+v.modelo+' '+v.cor+' · '+fmtHoras(h)+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:4px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
+      html+='<div class="hist-item" style="padding:8px 14px 8px 30px;border-top:0.5px solid rgba(0,0,0,0.06);"><div class="hist-body"><div class="hist-tipo" style="font-size:12px;">'+v.chassi+' · '+v.cliente+(totalVisitas>1?' <span class="badge b-b">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="hist-datas">'+fmtVeiculo(v)+' · '+fmtHoras(h)+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:4px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'">'+statusLabel(st)+'</span></div>';
     });
     html+='</div></div>';
   });
@@ -718,7 +721,7 @@ function renderLista(){
       botoes+='<button class="qa-btn qa-saida" onclick="irParaSaida('+v.id+')">&#8593; Saída</button>';
       quick='<div class="veh-quick">'+botoes+'</div>';
     }
-    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+v.modelo+' '+v.cor+(totalVisitas>1?' <span class="badge b-b" style="margin-left:4px;">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:2px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
+    return '<div class="veh-block"><div class="veh-item"><input type="checkbox" class="veh-check" '+(selectedIds.has(v.id)?'checked':'')+' onchange="toggleSelectVeiculo('+v.id+',this.checked)"><div class="veh-info"><div class="veh-name">'+v.cliente+' — '+fmtVeiculo(v)+(totalVisitas>1?' <span class="badge b-b" style="margin-left:4px;">'+vinfo.numeroPorId[v.id]+'ª visita</span>':'')+'</div><div class="veh-sub"><b>'+v.chassi+'</b> · '+v.tipo+' · '+v.entradaData+(v.entradaHora?' '+v.entradaHora:'')+(v.responsavelAtual?' · Resp.: '+v.responsavelAtual:'')+'</div></div>'+(passouPorPendencia(v)&&st!=='pendencia'?'<span class="badge b-c" style="margin-right:2px;">teve pendência</span>':'')+'<span class="badge '+statusBadgeClass(st)+'" style="margin-right:2px;">'+statusLabel(st)+'</span><div class="veh-actions"><button class="icon-btn" onclick="abrirEdicao('+v.id+')" title="Editar">&#9998;</button><button class="icon-btn icon-btn-del" onclick="pedirDel('+v.id+')" title="Excluir">&#128465;</button></div></div>'+quick+'</div>';
   }).join('');
   var selAllEl=document.getElementById('chk-select-all');
   if(selAllEl)selAllEl.checked=lastListaIds.length>0&&lastListaIds.every(function(id){return selectedIds.has(id);});
@@ -757,6 +760,7 @@ function abrirEdicao(id){
   document.getElementById('edit-cliente').value=v.cliente||'';
   document.getElementById('edit-contato').value=v.contato||'';
   document.getElementById('edit-modelo').value=v.modelo||'';
+  document.getElementById('edit-versao').value=v.versao||'';
   document.getElementById('edit-cor').value=v.cor||'';
   document.getElementById('edit-tipo').value=v.tipo||'';
   document.getElementById('edit-status').value=v.statusManual||'fila';
@@ -786,7 +790,7 @@ async function salvarEdicao(){
   var novaSaidaData=document.getElementById('edit-saida-data').value||null;
   var novaSaidaHora=document.getElementById('edit-saida-hora').value||null;
   v.cliente=cliente;v.contato=document.getElementById('edit-contato').value.trim();
-  v.modelo=modelo;v.cor=cor;v.tipo=tipo;
+  v.modelo=modelo;v.versao=document.getElementById('edit-versao').value.trim();v.cor=cor;v.tipo=tipo;
   v.statusManual=novoStatus;
   if(novoResponsavel)v.responsavelAtual=novoResponsavel;
   v.entradaData=document.getElementById('edit-entrada-data').value;
@@ -833,6 +837,7 @@ async function addEntrada(){
   var chassi=document.getElementById('e-chassi').value.trim().toUpperCase();
   var cliente=document.getElementById('e-cliente').value.trim();
   var modelo=document.getElementById('e-modelo').value.trim();
+  var versao=document.getElementById('e-versao').value.trim();
   var cor=document.getElementById('e-cor').value.trim();
   var tipo=document.getElementById('e-tipo').value.trim();
   if(!chassi||!cliente||!modelo||!cor||!tipo){showToast('Preencha chassi, cliente, modelo, cor e tipo de serviço',true);return;}
@@ -842,13 +847,13 @@ async function addEntrada(){
     var entradaHora=document.getElementById('e-hora').value||nowHM();
     registros.push({
       id:nid++,chassi:chassi,cliente:cliente,contato:document.getElementById('e-contato').value.trim(),
-      modelo:modelo,cor:cor,tipo:tipo,statusManual:'fila',
+      modelo:modelo,versao:versao,cor:cor,tipo:tipo,statusManual:'fila',
       entradaData:entradaData,entradaHora:entradaHora,
       obsEntrada:document.getElementById('e-obs').value,
       saidaData:null,saidaHora:null,obsSaida:'',
       historicoStatus:[{status:'fila',data:entradaData,hora:entradaHora}]
     });
-    ['e-chassi','e-cliente','e-contato','e-modelo','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
+    ['e-chassi','e-cliente','e-contato','e-modelo','e-versao','e-cor','e-tipo','e-obs'].forEach(function(id){document.getElementById(id).value='';});
     await save();renderAll();
     var totalChassi=registros.filter(function(r){return r.chassi===chassi;}).length;
     showToast(totalChassi>1?('Entrada registrada: '+chassi+' — '+totalChassi+'ª visita deste chassi'):('Entrada registrada: '+chassi));
@@ -865,7 +870,7 @@ function buscaChassiSaida(){
   if(q.length<2){list.classList.remove('open');document.getElementById('saida-preview').style.display='none';selectedSaidaId=null;return;}
   var found=registros.filter(function(v){return computeStatus(v)!=='concluido'&&v.chassi.toUpperCase().includes(q);}).slice(0,6);
   if(!found.length){list.classList.remove('open');return;}
-  list.innerHTML=found.map(function(v){return '<div class="ac-item" onclick="selecionarVeiculoSaida('+v.id+')"><div class="ac-info">'+v.cliente+' — '+v.modelo+' '+v.cor+'</div><div class="ac-chassi">'+v.chassi+' · '+v.tipo+' · '+statusLabel(computeStatus(v))+'</div></div>';}).join('');
+  list.innerHTML=found.map(function(v){return '<div class="ac-item" onclick="selecionarVeiculoSaida('+v.id+')"><div class="ac-info">'+v.cliente+' — '+fmtVeiculo(v)+'</div><div class="ac-chassi">'+v.chassi+' · '+v.tipo+' · '+statusLabel(computeStatus(v))+'</div></div>';}).join('');
   list.classList.add('open');
 }
 function selecionarVeiculoSaida(id){
@@ -873,7 +878,7 @@ function selecionarVeiculoSaida(id){
   selectedSaidaId=id;
   document.getElementById('s-chassi').value=v.chassi;
   document.getElementById('ac-list').classList.remove('open');
-  document.getElementById('sp-modelo').textContent=v.cliente+' — '+v.modelo+' '+v.cor;
+  document.getElementById('sp-modelo').textContent=v.cliente+' — '+fmtVeiculo(v);
   document.getElementById('sp-info').textContent=v.chassi+' · '+v.tipo;
   var h=horasAtendimento(v);
   document.getElementById('sp-dias').innerHTML='<span class="badge '+statusBadgeClass(computeStatus(v))+'">'+fmtHoras(h)+' em atendimento</span>';
@@ -930,6 +935,7 @@ function fecharHistTimeline(){document.getElementById('hist-timeline-card').styl
 function updateDatalist(){
   var dl=function(id,vals){var el=document.getElementById(id);if(el)el.innerHTML=[...new Set(vals.filter(Boolean))].map(function(v){return '<option value="'+v+'">';}).join('');};
   dl('dl-mod',registros.map(function(v){return v.modelo;}));
+  dl('dl-versao',registros.map(function(v){return v.versao;}));
   dl('dl-cor',registros.map(function(v){return v.cor;}));
   dl('dl-cliente',registros.map(function(v){return v.cliente;}));
   dl('dl-contato',registros.map(function(v){return v.contato;}));
@@ -939,6 +945,7 @@ function updateDatalist(){
 function updateEditDatalist(){
   var dl=function(id,vals){var el=document.getElementById(id);if(el)el.innerHTML=[...new Set(vals.filter(Boolean))].map(function(v){return '<option value="'+v+'">';}).join('');};
   dl('dl-mod-e',registros.map(function(v){return v.modelo;}));
+  dl('dl-versao-e',registros.map(function(v){return v.versao;}));
   dl('dl-cor-e',registros.map(function(v){return v.cor;}));
   dl('dl-cliente-e',registros.map(function(v){return v.cliente;}));
   dl('dl-contato-e',registros.map(function(v){return v.contato;}));
@@ -979,7 +986,7 @@ function processImport(rows){
     var statusTxt=findCol(row,['Status','status']).toLowerCase();
     var rowData={
       chassi:chassi,cliente:findCol(row,['Cliente','cliente']),contato:findCol(row,['Contato','contato','Telefone']),
-      modelo:findCol(row,['Modelo','modelo']),cor:findCol(row,['Cor','cor']),
+      modelo:findCol(row,['Modelo','modelo']),versao:findCol(row,['Versão','Versao','versao','versão']),cor:findCol(row,['Cor','cor']),
       tipo:findCol(row,['Tipo de Serviço','TipodeServico','Tipo']),
       responsavelAtual:findCol(row,['Responsável Atual','ResponsavelAtual','Responsável','Responsavel']),
       entradaData:normalizeDate(findCol(row,['Data Entrada','DataEntrada'])),
@@ -993,10 +1000,10 @@ function processImport(rows){
     if(!existing){
       if(!rowData.cliente||!rowData.modelo||!rowData.cor||!rowData.tipo){result.push({tipo:'erro',chassi:chassi,motivo:'Cliente, modelo, cor e tipo de serviço são obrigatórios'});return;}
       if(!rowData.statusManual)rowData.statusManual='fila';
-      result.push({tipo:'novo',chassi:chassi,data:rowData,desc:rowData.cliente+' — '+rowData.modelo+' '+rowData.cor});
+      result.push({tipo:'novo',chassi:chassi,data:rowData,desc:rowData.cliente+' — '+rowData.modelo+(rowData.versao?' '+rowData.versao:'')+' '+rowData.cor});
     }else{
       var changes=[];
-      ['cliente','contato','modelo','cor','tipo','statusManual','responsavelAtual','entradaData','entradaHora','saidaData','saidaHora','obsEntrada','obsSaida'].forEach(function(campo){
+      ['cliente','contato','modelo','versao','cor','tipo','statusManual','responsavelAtual','entradaData','entradaHora','saidaData','saidaHora','obsEntrada','obsSaida'].forEach(function(campo){
         if(rowData[campo]&&rowData[campo]!==existing[campo])changes.push({campo:campo,valor:rowData[campo]});
       });
       if(changes.length>0){result.push({tipo:'atualiza',chassi:chassi,existingId:existing.id,changes:changes,desc:existing.cliente+' — '+existing.modelo,changeDesc:changes.map(function(c){return c.campo+': '+c.valor;}).join(', ')});}
@@ -1057,13 +1064,13 @@ function exportXLS(tipoExp){
     XLSX.utils.book_append_sheet(wb,ws,'Resumo');XLSX.writeFile(wb,'resumo_servicos_'+today()+'.xlsx');showToast('Resumo exportado');return;
   }
   var data=tipoExp==='aberto'?registros.filter(function(v){return computeStatus(v)!=='concluido';}):tipoExp==='concluido'?registros.filter(function(v){return computeStatus(v)==='concluido';}):registros;
-  var rows=[['ID_OS','Chassi','Cliente','Contato','Modelo','Cor','Tipo de Serviço','Status','Responsável Atual','Data Entrada','Hora Entrada','Data Saída','Hora Saída','Obs Entrada','Obs Saída','Horas Atendimento','Dias Atendimento','Teve Pendência','Linha do Tempo de Status']];
+  var rows=[['ID_OS','Chassi','Cliente','Contato','Modelo','Versão','Cor','Tipo de Serviço','Status','Responsável Atual','Data Entrada','Hora Entrada','Data Saída','Hora Saída','Obs Entrada','Obs Saída','Horas Atendimento','Dias Atendimento','Teve Pendência','Linha do Tempo de Status']];
   data.forEach(function(v){
     var h=horasAtendimento(v);
     var linhaTempo=(v.historicoStatus||[]).map(fmtHistItem).join(' → ');
-    rows.push([v.id,v.chassi,v.cliente,v.contato||'',v.modelo,v.cor,v.tipo,statusLabel(computeStatus(v)),v.responsavelAtual||'',v.entradaData||'',v.entradaHora||'',v.saidaData||'',v.saidaHora||'',v.obsEntrada||'',v.obsSaida||'',h!=null?Math.round(h*10)/10:'',h!=null?Math.round(h/24*10)/10:'',passouPorPendencia(v)?'Sim':'Não',linhaTempo]);
+    rows.push([v.id,v.chassi,v.cliente,v.contato||'',v.modelo,v.versao||'',v.cor,v.tipo,statusLabel(computeStatus(v)),v.responsavelAtual||'',v.entradaData||'',v.entradaHora||'',v.saidaData||'',v.saidaHora||'',v.obsEntrada||'',v.obsSaida||'',h!=null?Math.round(h*10)/10:'',h!=null?Math.round(h/24*10)/10:'',passouPorPendencia(v)?'Sim':'Não',linhaTempo]);
   });
-  var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:6},{wch:18},{wch:18},{wch:14},{wch:12},{wch:12},{wch:20},{wch:13},{wch:16},{wch:13},{wch:11},{wch:13},{wch:11},{wch:26},{wch:26},{wch:15},{wch:13},{wch:13},{wch:60}];
+  var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:6},{wch:18},{wch:18},{wch:14},{wch:12},{wch:16},{wch:12},{wch:20},{wch:13},{wch:16},{wch:13},{wch:11},{wch:13},{wch:11},{wch:26},{wch:26},{wch:15},{wch:13},{wch:13},{wch:60}];
   XLSX.utils.book_append_sheet(wb,ws,tipoExp==='todos'?'Base Completa':tipoExp==='aberto'?'Em Aberto':'Concluídos');
   XLSX.writeFile(wb,'atendimentos_'+tipoExp+'_'+today()+'.xlsx');showToast('Exportado: '+data.length+' registros');
 }
